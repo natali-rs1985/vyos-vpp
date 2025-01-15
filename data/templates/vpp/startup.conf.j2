@@ -110,7 +110,7 @@ plugins {
 linux-cp {
     lcp-sync
     lcp-auto-subint
-{% if lcp.route_no_paths is vyos_defined %}
+{% if lcp.disable_route_no_paths is not vyos_defined %}
     route-no-paths
 {% endif %}
 }
