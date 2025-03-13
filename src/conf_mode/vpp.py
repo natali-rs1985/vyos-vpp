@@ -20,6 +20,7 @@ from pathlib import Path
 
 from psutil import virtual_memory
 from pyroute2 import IPRoute
+import os
 
 from vyos import ConfigError
 from vyos import airbag
@@ -325,6 +326,7 @@ def verify_memory(settings):
 
 
 def verify(config):
+    print(f"CONFIG: {config}")
     # bail out early - looks like removal from running config
     if not config or ('removed_ifaces' in config and 'settings' not in config):
         return None
@@ -561,6 +563,34 @@ def generate(config):
     return None
 
 
+def initialize_interface(iface, driver, iface_config):
+    # DPDK - rescan PCI to use a proper driver
+    if driver == 'dpdk' and iface_config['original_driver'] not in not_pci_drv:
+        control_host.pci_rescan(iface_config['dev_id'])
+        # rename to the proper name
+        iface_new_name: str = control_host.get_eth_name(iface_config['dev_id'])
+        control_host.rename_iface(iface_new_name, iface)
+
+    # XDP - rename an interface, disable promisc and XDP
+    if driver == 'xdp':
+        control_host.set_promisc(f'defunct_{iface}', 'off')
+        control_host.rename_iface(f'defunct_{iface}', iface)
+        control_host.xdp_remove(iface)
+
+    # Rename Mellanox NIC to a normal name
+    try:
+        if control_host.get_eth_driver(f'defunct_{iface}') == 'mlx5_core':
+            control_host.rename_iface(f'defunct_{iface}', iface)
+    except FileNotFoundError:
+        pass
+
+    # Replace a driver with original for VMBus interfaces and rename it
+    if driver == 'dpdk' and iface_config['original_driver'] in override_drivers:
+        control_host.override_driver(iface_config['bus_id'], iface_config['dev_id'])
+        iface_new_name: str = control_host.get_eth_name(iface_config['dev_id'])
+        control_host.rename_iface(iface_new_name, iface)
+
+
 def apply(config):
     # Open persistent config
     # It is required for operations with interfaces
@@ -591,52 +621,11 @@ def apply(config):
 
     # Initialize interfaces removed from VPP
     for iface in config.get('removed_ifaces', []):
-        # DPDK - rescan PCI to use a proper driver
-        if (
-            iface['driver'] == 'dpdk'
-            and config['persist_config'][iface['iface_name']]['original_driver']
-            not in not_pci_drv
-        ):
-            control_host.pci_rescan(
-                config['persist_config'][iface['iface_name']]['dev_id']
-            )
-            # rename to the proper name
-            iface_new_name: str = control_host.get_eth_name(
-                config['persist_config'][iface['iface_name']]['dev_id']
-            )
-            control_host.rename_iface(iface_new_name, iface['iface_name'])
-        # XDP - rename an interface , disable promisc and XDP
-        if iface['driver'] == 'xdp':
-            control_host.set_promisc(f'defunct_{iface["iface_name"]}', 'off')
-            control_host.rename_iface(
-                f'defunct_{iface["iface_name"]}', iface['iface_name']
-            )
-            control_host.xdp_remove(iface['iface_name'])
-        # Rename Mellanox NIC to a normal name
-        try:
-            if (
-                control_host.get_eth_driver(f'defunct_{iface["iface_name"]}')
-                == 'mlx5_core'
-            ):
-                control_host.rename_iface(
-                    f'defunct_{iface["iface_name"]}', iface['iface_name']
-                )
-        except FileNotFoundError:
-            pass
-        # Replace a driver with original for VMBus interfaces and rename it
-        if (
-            iface['driver'] == 'dpdk'
-            and config['persist_config'][iface['iface_name']]['original_driver']
-            in override_drivers
-        ):
-            control_host.override_driver(
-                config['persist_config'][iface['iface_name']]['bus_id'],
-                config['persist_config'][iface['iface_name']]['dev_id'],
-            )
-            iface_new_name: str = control_host.get_eth_name(
-                config['persist_config'][iface['iface_name']]['dev_id']
-            )
-            control_host.rename_iface(iface_new_name, iface['iface_name'])
+        initialize_interface(
+            iface['iface_name'],
+            iface['driver'],
+            config['persist_config'][iface['iface_name']],
+        )
 
         # Remove what is not in the config anymore
         if iface['iface_name'] not in config.get('settings', {}).get('interface', {}):
@@ -646,7 +635,25 @@ def apply(config):
         # connect to VPP
         # must be performed multiple attempts because API is not available
         # immediately after the service restart
-        vpp_control = VPPControl(attempts=20, interval=500)
+        try:
+            vpp_control = VPPControl(attempts=20, interval=500)
+        except Exception as e:
+            from vyos.config_mgmt import ConfigMgmt
+
+            # if cannot connect then we need initialize interfaces that are still in dataplane
+            Warning(
+                f'An error occurred: {e}\n'
+                f'Some interfaces and options in VPP could be set not properly. '
+                f'Please return to the previous configuration'
+            )
+            for iface, iface_config in config['settings']['interface'].items():
+                initialize_interface(
+                    iface, iface_config['driver'], config['persist_config'][iface]
+                )
+
+            call_dependents()
+            exit(1)
+
         # preconfigure LCP plugin
         if 'ignore_kernel_routes' in config.get('settings', {}).get('lcp', {}):
             vpp_control.cli_cmd('lcp param route-no-paths off')
