@@ -956,7 +956,7 @@
                     </valueHelp>
                     <valueHelp>
                       <format>tcp</format>
-                      <description>transmission control protocol</description>
+                      <description>Transmission control protocol</description>
                     </valueHelp>
                     <valueHelp>
                       <format>udp</format>
