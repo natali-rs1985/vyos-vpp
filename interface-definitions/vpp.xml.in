@@ -948,7 +948,7 @@
                     </completionHelp>
                     <valueHelp>
                       <format>all</format>
-                      <description>All protocols all protocols (TCP, UDP and ICMP)</description>
+                      <description>All protocols (TCP, UDP, and ICMP)</description>
                     </valueHelp>
                     <valueHelp>
                       <format>icmp</format>
