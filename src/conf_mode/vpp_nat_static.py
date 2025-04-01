@@ -136,7 +136,7 @@ def verify(config):
 
         if not has_trans_port == has_dest_port:
             raise ConfigError(
-                'Either both ports (destination and translation) are required or none!'
+                'Source and destination ports must either both be specified, or neither must be specified'
             )
 
 
