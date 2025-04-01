@@ -23,7 +23,7 @@
               </node>
               <node name="summary">
                 <properties>
-                  <help>Show VPP NAT44 sessions</help>
+                  <help>Show VPP NAT44 summary</help>
                 </properties>
                 <command>sudo ${vyos_op_scripts_dir}/show_vpp_nat44.py show_summary</command>
               </node>
