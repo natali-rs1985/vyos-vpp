@@ -857,16 +857,15 @@
               <properties>
                 <help>NAT inside interface</help>
                 <completionHelp>
-                  <list>any</list>
                   <script>${vyos_completion_dir}/list_interfaces</script>
                 </completionHelp>
+                <multi/>
               </properties>
             </leafNode>
             <leafNode name="outside-interface">
               <properties>
                 <help>NAT outside interface</help>
                 <completionHelp>
-                  <list>any</list>
                   <script>${vyos_completion_dir}/list_interfaces</script>
                 </completionHelp>
               </properties>
@@ -876,30 +875,57 @@
                 <help>Outside NAT IP (source NAT only)</help>
               </properties>
               <children>
-                <leafNode name="address">
+                <tagNode name="pool">
                   <properties>
-                    <help>IP address, subnet, or range</help>
-                    <completionHelp>
-                      <list>masquerade</list>
-                    </completionHelp>
+                    <help>Translation IPv4 pool</help>
                     <valueHelp>
-                      <format>ipv4</format>
-                      <description>IPv4 address to match</description>
-                    </valueHelp>
-                    <valueHelp>
-                      <format>ipv4range</format>
-                      <description>IPv4 address range to match</description>
-                    </valueHelp>
-                    <valueHelp>
-                      <format>masquerade</format>
-                      <description>NAT to the primary address of outbound-interface</description>
+                      <format>txt</format>
+                      <description>Name of the pool</description>
                     </valueHelp>
                     <constraint>
-                      <validator name="ipv4-address"/>
-                      <validator name="ipv4-range"/>
-                      <regex>(masquerade)</regex>
+                      #include <include/constraint/alpha-numeric-hyphen-underscore-dot.xml.i>
                     </constraint>
                   </properties>
+                  <children>
+                    <leafNode name="address">
+                      <properties>
+                        <help>IP address or range</help>
+                        <valueHelp>
+                          <format>ipv4</format>
+                          <description>IPv4 address to match</description>
+                        </valueHelp>
+                        <valueHelp>
+                          <format>ipv4range</format>
+                          <description>IPv4 address range to match</description>
+                        </valueHelp>
+                        <constraint>
+                          <validator name="ipv4-address"/>
+                          <validator name="ipv4-range"/>
+                        </constraint>
+                      </properties>
+                    </leafNode>
+                  </children>
+                </tagNode>
+              </children>
+            </node>
+            <node name="limits">
+              <properties>
+                <help>Limit settings</help>
+              </properties>
+              <children>
+                <leafNode name="per-thread-sessions">
+                  <properties>
+                    <help>Maximum number of sessions per thread</help>
+                    <valueHelp>
+                      <format>u32</format>
+                      <description>Number of sessions</description>
+                    </valueHelp>
+                    <constraint>
+                      <validator name="numeric" argument="--range 1-4294967295"/>
+                    </constraint>
+                    <constraintErrorMessage>Number of sessions must be between 1 and 4294967295</constraintErrorMessage>
+                  </properties>
+                  <defaultValue>64512</defaultValue>
                 </leafNode>
               </children>
             </node>

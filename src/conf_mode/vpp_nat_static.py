@@ -152,7 +152,7 @@ def apply(config):
 
     # Delete inside interfaces
     for interface in config['in_iface_del']:
-        n.delete_inside_interface(interface)
+        n.delete_nat44_interface_inside(interface)
     # Delete outside interfaces
     for interface in config['out_iface_del']:
         n.delete_outside_interface(interface)
@@ -162,7 +162,7 @@ def apply(config):
             rule_config = config['effective']['rule'][rule]
             n.delete_nat44_static_mapping(
                 local_ip=rule_config.get('local').get('address'),
-                external_ip=rule_config.get('external', {}).get('address', ''),
+                external_ip=rule_config.get('external', {}).get('address'),
                 local_port=int(rule_config.get('local', {}).get('port', 0)),
                 external_port=int(rule_config.get('external', {}).get('port', 0)),
                 protocol=protocol_map[rule_config.get('protocol', 'all')],
@@ -174,7 +174,7 @@ def apply(config):
     # Add NAT44 static mapping rules
     n.enable_nat44_ed()
     for interface in config['in_iface_add']:
-        n.add_inside_interface(interface)
+        n.add_nat44_interface_inside(interface)
     for interface in config['out_iface_add']:
         n.add_outside_interface(interface)
     for rule in config['changed_rules']:
@@ -182,7 +182,7 @@ def apply(config):
             rule_config = config['rule'][rule]
             n.add_nat44_static_mapping(
                 local_ip=rule_config.get('local').get('address'),
-                external_ip=rule_config.get('external', {}).get('address', ''),
+                external_ip=rule_config.get('external', {}).get('address'),
                 local_port=int(rule_config.get('local', {}).get('port', 0)),
                 external_port=int(rule_config.get('external', {}).get('port', 0)),
                 protocol=protocol_map[rule_config.get('protocol', 'all')],

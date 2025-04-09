@@ -33,6 +33,11 @@ protocol_map = {
     17: 'udp',
 }
 
+interface_flags_map = {
+    16: 'out',
+    32: 'in',
+}
+
 
 def _verify(func):
     """Decorator checks if config for VPP NAT44 exists"""
@@ -48,6 +53,11 @@ def _verify(func):
         return func(*args, **kwargs)
 
     return _wrapper
+
+
+def _get_raw_output(data_dump):
+    data = [json.loads(json.dumps(d._asdict(), default=str)) for d in data_dump]
+    return data
 
 
 def _get_raw_output_sessions(vpp_api):
@@ -108,14 +118,6 @@ def _get_formatted_output_sessions(sessions_list):
         print('\n')
 
 
-def _get_raw_output_static_rules(vpp_api):
-    nat_static_dump = vpp_api.nat44_static_mapping_dump()
-    rules_list = [
-        json.loads(json.dumps(rule._asdict(), default=str)) for rule in nat_static_dump
-    ]
-    return rules_list
-
-
 def _get_formatted_output_rules(rules_list):
     data_entries = []
     for rule in rules_list:
@@ -136,6 +138,20 @@ def _get_formatted_output_rules(rules_list):
     ]
     out = sorted(data_entries, key=lambda x: x[2])
     return tabulate(out, headers=headers, tablefmt='simple')
+
+
+def _get_formatted_output_addresses(addresses):
+    print('NAT44 pool addresses:')
+    for address_info in addresses:
+        print(address_info.get('ip_address'))
+
+
+def _get_formatted_output_interfaces(vpp, interfaces):
+    print('NAT44 interfaces:')
+    for interface in interfaces:
+        name = vpp.get_interface_name(interface['sw_if_index'])
+        iface_type = interface_flags_map[interface['flags']]
+        print(f'  {name} {iface_type}')
 
 
 @_verify
@@ -159,13 +175,40 @@ def show_summary(raw: bool):
 @_verify
 def show_static(raw: bool):
     vpp = VPPControl()
-    rules_list: list[dict] = _get_raw_output_static_rules(vpp.api)
+    nat_static_dump = vpp.api.nat44_static_mapping_dump()
+    rules_list: list[dict] = _get_raw_output(nat_static_dump)
 
     if raw:
         return rules_list
 
     else:
         return _get_formatted_output_rules(rules_list)
+
+
+@_verify
+def show_addresses(raw: bool):
+    vpp = VPPControl()
+    addresses_dump = vpp.api.nat44_address_dump()
+    addresses: list[dict] = _get_raw_output(addresses_dump)
+
+    if raw:
+        return addresses
+
+    else:
+        return _get_formatted_output_addresses(addresses)
+
+
+@_verify
+def show_interfaces(raw: bool):
+    vpp = VPPControl()
+    interfaces_dump = vpp.api.nat44_interface_dump()
+    interfaces: list[dict] = _get_raw_output(interfaces_dump)
+
+    if raw:
+        return interfaces
+
+    else:
+        return _get_formatted_output_interfaces(vpp, interfaces)
 
 
 if __name__ == '__main__':

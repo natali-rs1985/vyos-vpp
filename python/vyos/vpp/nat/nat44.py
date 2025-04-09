@@ -18,16 +18,19 @@
 from vyos.vpp import VPPControl
 
 
+# NAT44 flags
+NAT_IS_NONE = 0x00
+NAT_IS_ADDR_ONLY = 0x08
+NAT_IS_OUTSIDE = 0x10
+NAT_IS_INSIDE = 0x20
+
+
 class Nat44:
     def __init__(
         self,
-        interface_in: str,
         interface_out: str,
-        translation_pool: str,
     ):
-        self.interface_in = interface_in
         self.interface_out = interface_out
-        self.translation_pool = translation_pool
         self.vpp = VPPControl()
 
     def enable_nat44_ed(self):
@@ -86,26 +89,26 @@ class Nat44:
             is_add=False,
         )
 
-    def add_nat44_interface_inside(self):
+    def add_nat44_interface_inside(self, interface):
         """Add NAT44 interface"""
         self.vpp.api.nat44_interface_add_del_feature(
-            flags=0x20,
-            sw_if_index=self.vpp.get_sw_if_index(self.interface_in),
+            flags=NAT_IS_INSIDE,
+            sw_if_index=self.vpp.get_sw_if_index(interface),
             is_add=True,
         )
 
-    def delete_nat44_interface_inside(self):
+    def delete_nat44_interface_inside(self, interface):
         """Delete NAT44 interface"""
         self.vpp.api.nat44_interface_add_del_feature(
-            flags=0x20,
-            sw_if_index=self.vpp.get_sw_if_index(self.interface_in),
+            flags=NAT_IS_INSIDE,
+            sw_if_index=self.vpp.get_sw_if_index(interface),
             is_add=False,
         )
 
     def add_nat44_interface_outside(self):
         """Add NAT44 interface"""
         self.vpp.api.nat44_interface_add_del_feature(
-            flags=0x10,
+            flags=NAT_IS_OUTSIDE,
             sw_if_index=self.vpp.get_sw_if_index(self.interface_out),
             is_add=True,
         )
@@ -113,34 +116,38 @@ class Nat44:
     def delete_nat44_interface_outside(self):
         """Delete NAT44 interface"""
         self.vpp.api.nat44_interface_add_del_feature(
-            flags=0x10,
+            flags=NAT_IS_OUTSIDE,
             sw_if_index=self.vpp.get_sw_if_index(self.interface_out),
             is_add=False,
         )
 
-    def add_nat44_address_range(self):
+    def add_nat44_address_range(self, translation_pool):
         """Add NAT44 address range"""
-        if '-' not in self.translation_pool and self.translation_pool != 'masquerade':
-            first_ip_address = last_ip_address = self.translation_pool
+        if '-' not in translation_pool:
+            first_ip_address = last_ip_address = translation_pool
         else:
-            first_ip_address, last_ip_address = self.translation_pool.split('-')
+            first_ip_address, last_ip_address = translation_pool.split('-')
         self.vpp.api.nat44_add_del_address_range(
             first_ip_address=first_ip_address,
             last_ip_address=last_ip_address,
             is_add=True,
         )
 
-    def delete_nat44_address_range(self):
+    def delete_nat44_address_range(self, translation_pool):
         """Delete NAT44 address range"""
-        if '-' not in self.translation_pool and self.translation_pool != 'masquerade':
-            first_ip_address = last_ip_address = self.translation_pool
+        if '-' not in translation_pool:
+            first_ip_address = last_ip_address = translation_pool
         else:
-            first_ip_address, last_ip_address = self.translation_pool.split('-')
+            first_ip_address, last_ip_address = translation_pool.split('-')
         self.vpp.api.nat44_add_del_address_range(
             first_ip_address=first_ip_address,
             last_ip_address=last_ip_address,
             is_add=False,
         )
+
+    def set_nat44_session_limit(self, sessions):
+        """Set NAT44 maximum number of sessions per worker thread"""
+        self.vpp.api.nat44_set_session_limit(session_limit=sessions)
 
     def enable_ipfix(self):
         """Enable NAT44 IPFIX logging"""
@@ -150,14 +157,6 @@ class Nat44:
 class Nat44Static(Nat44):
     def __init__(self):
         self.vpp = VPPControl()
-
-    def add_inside_interface(self, interface_in):
-        self.interface_in = interface_in
-        self.add_nat44_interface_inside()
-
-    def delete_inside_interface(self, interface_in):
-        self.interface_in = interface_in
-        self.delete_nat44_interface_inside()
 
     def add_outside_interface(self, interface_out):
         self.interface_out = interface_out
@@ -177,7 +176,7 @@ class Nat44Static(Nat44):
             protocol=protocol,
             local_port=local_port,
             external_port=external_port,
-            flags=0x08 if not (protocol or local_port) else 0x00,
+            flags=NAT_IS_ADDR_ONLY if not (protocol or local_port) else NAT_IS_NONE,
             is_add=True,
         )
 
@@ -191,6 +190,6 @@ class Nat44Static(Nat44):
             protocol=protocol,
             local_port=local_port,
             external_port=external_port,
-            flags=0x08 if not (protocol or local_port) else 0x00,
+            flags=NAT_IS_ADDR_ONLY if not (protocol or local_port) else NAT_IS_NONE,
             is_add=False,
         )

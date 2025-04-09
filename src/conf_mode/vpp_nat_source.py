@@ -16,7 +16,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-from vyos.config import Config
+from vyos.config import Config, config_dict_merge
 from vyos import ConfigError
 from vyos.vpp.nat.nat44 import Nat44
 
@@ -29,17 +29,15 @@ def get_config(config=None) -> dict:
 
     base = ['vpp', 'nat44', 'source']
 
-    # Get config_dict with default values
+    # Get config_dict without default values
     config = conf.get_config_dict(
         base,
         key_mangling=('-', '_'),
         get_first_key=True,
         no_tag_node_value_mangle=True,
-        with_defaults=True,
-        with_recursive_defaults=True,
     )
 
-    # Get effective config as we need full dicitonary per interface delete
+    # Get effective config as we need full dictionary per interface delete
     effective_config = conf.get_config_dict(
         base,
         key_mangling=('-', '_'),
@@ -50,6 +48,10 @@ def get_config(config=None) -> dict:
 
     if not config:
         config['remove'] = True
+
+    # Get default values and merge
+    default_values = conf.get_config_defaults(**config.kwargs, recursive=True)
+    config = config_dict_merge(default_values, config)
 
     if effective_config:
         config.update({'effective': effective_config})
@@ -62,17 +64,19 @@ def verify(config):
         return None
 
     required_keys = {'inside_interface', 'outside_interface'}
-    if not all(key in config for key in required_keys):
-        missing_keys = required_keys - set(config.keys())
+    missing_keys = required_keys - set(config.keys())
+    if missing_keys:
         raise ConfigError(
             f"Required options are missing: {', '.join(missing_keys).replace('_', '-')}"
         )
 
-    if not config.get('translation', {}).get('address'):
-        raise ConfigError('Translation requires address')
+    pools = config.get('translation', {}).get('pool')
+    if not pools:
+        raise ConfigError('Translation pool is required')
 
-    if config.get('translation', {}).get('address') == 'masquerade':
-        raise ConfigError('Masquerade is not implemented')
+    for num, pool in pools.items():
+        if 'address' not in pool:
+            raise ConfigError(f'Source NAT translation pool {num} missing address')
 
 
 def generate(config):
@@ -83,29 +87,34 @@ def apply(config):
     # Delete NAT source
     if 'effective' in config:
         remove_config = config.get('effective')
-        interface_in = remove_config.get('inside_interface')
+        interfaces_in = remove_config.get('inside_interface')
         interface_out = remove_config.get('outside_interface')
-        translation_address = remove_config.get('translation', {}).get('address')
+        pools = remove_config.get('translation', {}).get('pool')
 
-        n = Nat44(interface_in, interface_out, translation_address)
-        n.delete_nat44_out_interface()
-        n.delete_nat44_interface_inside()
-        n.delete_nat44_address_range()
+        n = Nat44(interface_out)
+        n.delete_nat44_interface_outside()
+        for interface in interfaces_in:
+            n.delete_nat44_interface_inside(interface)
+        for pool in pools.values():
+            n.delete_nat44_address_range(pool['address'])
 
     if 'remove' in config:
         return None
 
     # Add NAT44
-    interface_in = config.get('inside_interface')
+    interfaces_in = config.get('inside_interface')
     interface_out = config.get('outside_interface')
-    translation_address = config.get('translation', {}).get('address')
+    sessions = int(config.get('limits').get('per_thread_sessions'))
+    pools = config.get('translation', {}).get('pool')
 
-    n = Nat44(interface_in, interface_out, translation_address)
+    n = Nat44(interface_out)
     n.enable_nat44_ed()
-    n.enable_nat44_forwarding()
-    n.add_nat44_out_interface()
-    # n.add_nat44_interface_inside()
-    n.add_nat44_address_range()
+    n.set_nat44_session_limit(sessions)
+    n.add_nat44_interface_outside()
+    for interface in interfaces_in:
+        n.add_nat44_interface_inside(interface)
+    for pool in pools.values():
+        n.add_nat44_address_range(pool['address'])
 
 
 if __name__ == '__main__':
