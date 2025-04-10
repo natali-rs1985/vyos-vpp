@@ -76,24 +76,32 @@ def get_config(config=None) -> dict:
     )
     diff = get_config_diff(conf)
 
-    for rule in changed_rules:
-        base_rule = base + ['rule', rule]
-        tmp = node_changed(
-            conf,
-            base_rule,
-            key_mangling=('-', '_'),
-            recursive=True,
-            expand_nodes=Diff.DELETE | Diff.ADD,
-        )
+    if changed_rules:
+        for rule in changed_rules:
+            base_rule = base + ['rule', rule]
+            tmp = node_changed(
+                conf,
+                base_rule,
+                key_mangling=('-', '_'),
+                recursive=True,
+                expand_nodes=Diff.DELETE | Diff.ADD,
+            )
 
-        if 'inside_interface' in tmp:
-            new, old = diff.get_value_diff(base_rule + ['inside-interface'])
-            in_iface_add.append(new) if new else None
-            in_iface_del.append(old) if old else None
-        if 'outside_interface' in tmp:
-            new, old = diff.get_value_diff(base_rule + ['outside-interface'])
-            out_iface_add.append(new) if new else None
-            out_iface_del.append(old) if old else None
+            if 'inside_interface' in tmp:
+                new, old = diff.get_value_diff(base_rule + ['inside-interface'])
+                in_iface_add.append(new) if new else None
+                in_iface_del.append(old) if old else None
+            if 'outside_interface' in tmp:
+                new, old = diff.get_value_diff(base_rule + ['outside-interface'])
+                out_iface_add.append(new) if new else None
+                out_iface_del.append(old) if old else None
+
+    else:
+        changed_rules = list(config['rule'].keys())
+
+    for rule_config in config.get('rule', {}).values():
+        in_iface_add.append(rule_config['inside_interface'])
+        out_iface_add.append(rule_config['outside_interface'])
 
     final_in_iface_add = list(set(in_iface_add) - set(in_iface_del))
     final_in_iface_del = list(set(in_iface_del) - set(in_iface_add))
@@ -120,6 +128,9 @@ def verify(config):
     if 'remove' in config:
         return None
 
+    addresses_with_ports = set()
+    addresses_without_ports = set()
+
     required_keys = {'inside_interface', 'outside_interface'}
     for rule, rule_config in config['rule'].items():
         missing_keys = required_keys - rule_config.keys()
@@ -141,6 +152,21 @@ def verify(config):
             raise ConfigError(
                 'Source and destination ports must either both be specified, or neither must be specified'
             )
+
+        address = rule_config['external']['address']
+        port = rule_config['external'].get('port')
+        error_msg = f'Configuration error in rule {rule}: external address/port is already in use!'
+        if port:
+            pair = (address, port)
+            if pair in addresses_with_ports or address in addresses_without_ports:
+                raise ConfigError(error_msg)
+            addresses_with_ports.add(pair)
+        else:
+            if address in addresses_without_ports or any(
+                addr == address for addr, _ in addresses_with_ports
+            ):
+                raise ConfigError(error_msg)
+            addresses_without_ports.add(address)
 
 
 def generate(config):
@@ -167,6 +193,8 @@ def apply(config):
                 external_port=int(rule_config.get('external', {}).get('port', 0)),
                 protocol=protocol_map[rule_config.get('protocol', 'all')],
             )
+            if rule_config.get('external', {}).get('port'):
+                n.delete_nat_address(rule_config.get('external').get('address'))
 
     if 'remove' in config:
         return None
@@ -187,6 +215,8 @@ def apply(config):
                 external_port=int(rule_config.get('external', {}).get('port', 0)),
                 protocol=protocol_map[rule_config.get('protocol', 'all')],
             )
+            if rule_config.get('external').get('port'):
+                n.add_nat_address(rule_config.get('external').get('address'))
 
 
 if __name__ == '__main__':

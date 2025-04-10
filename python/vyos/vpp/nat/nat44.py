@@ -167,6 +167,14 @@ class Nat44Static(Nat44):
         self.interface_out = interface_out
         self.delete_nat44_interface_outside()
 
+    def add_nat_address(self, address):
+        self.translation_pool = address
+        self.add_nat44_address_range()
+
+    def delete_nat_address(self, address):
+        self.translation_pool = address
+        self.delete_nat44_address_range()
+
     def add_nat44_static_mapping(
         self, local_ip, external_ip, local_port, external_port, protocol
     ):
