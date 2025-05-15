@@ -94,8 +94,9 @@ plugins {
     plugin pppoe_plugin.so { enable }
     # NAT uncomment if needed
     # plugin cnat_plugin.so { enable }
-    # plugin nat_plugin.so { enable }
-    # plugin nat44_plugin.so { enable }
+    plugin nat_plugin.so { enable }
+    plugin nat44_ei_plugin.so { enable }
+    plugin det44_plugin.so { enable }
     # plugin nat44_ei_plugin.so { enable }
     # plugin nat64_plugin.so { enable }
     # plugin nat66_plugin.so { enable }
@@ -113,6 +114,8 @@ plugins {
     plugin crypto_openssl_plugin.so { enable }
 {% endif %}
     # plugin wireguard_plugin.so { enable }
+    # ACL
+    plugin acl_plugin.so { enable }
 }
 
 linux-cp {
