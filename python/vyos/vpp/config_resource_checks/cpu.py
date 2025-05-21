@@ -18,36 +18,26 @@
 
 from vyos.utils.cpu import get_available_cpus
 
-from vyos.vpp.config_resource_checks.constants import RESERVED_CPU_CORES
 
-
-def __available_cpus() -> list[int]:
+def __available_cpus(reserved_cpus: int, skip_cores: int) -> list[int]:
     # We need to reserve at least 2 cores for services other than VPP if possible
     # Get all available physical cores - use set to filter out unique values
     cpus = set(map(lambda el: el['core'], get_available_cpus()))
     cpus = list(cpus)
 
-    if len(cpus) <= RESERVED_CPU_CORES:
-        return cpus
+    if len(cpus) > reserved_cpus:
+        skip_cores += reserved_cpus
 
-    return cpus[RESERVED_CPU_CORES:]
-
-
-def skip_cores(settings: dict) -> int:
-    if 'skip_cores' in settings:
-        cores = int(settings['skip_cores'])
-    else:
-        cores = 0
-    return cores
+    return cpus[skip_cores:]
 
 
-def available_core_count() -> int:
-    return len(__available_cpus())
+def available_core_count(reserved_cpus: int, skip_cores: int) -> int:
+    return len(__available_cpus(reserved_cpus, skip_cores))
 
 
-def available_cpus(settings: dict) -> list:
+def available_cpus(reserved_cpus: int, skip_cores: int) -> list:
     # Available CPUs are all CPUs without first N skipped cores that will not be used
-    return __available_cpus()[skip_cores(settings) :]
+    return __available_cpus(reserved_cpus, skip_cores)
 
 
 def worker_core_numbers(iface: str, worker_ranges: list) -> list:

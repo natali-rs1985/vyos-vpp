@@ -771,7 +771,7 @@
                 <help>Main heap size</help>
                 #include <include/unformat_memory_size.xml.i>
               </properties>
-              <defaultValue>2G</defaultValue>
+              <defaultValue>1G</defaultValue>
             </leafNode>
             <leafNode name="main-heap-page-size">
               <properties>
