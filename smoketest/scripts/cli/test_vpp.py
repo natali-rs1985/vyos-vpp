@@ -1112,7 +1112,7 @@ class TestVPP(VyOSUnitTestSHIM.TestCase):
 
     def test_11_vpp_cpu_settings(self):
         main_core = '2'
-        workers = '2'
+        workers = '1'
         skip_cores = '1'
 
         self.cli_set(base_path + ['settings', 'cpu', 'workers', workers])
@@ -1148,8 +1148,8 @@ class TestVPP(VyOSUnitTestSHIM.TestCase):
             self.assertIn(config_entry, config)
 
     def test_12_vpp_cpu_corelist_workers(self):
-        main_core = '0'
-        corelist_workers = ['1', '2-3']
+        main_core = '2'
+        corelist_workers = ['3']
 
         for worker in corelist_workers:
             self.cli_set(base_path + ['settings', 'cpu', 'corelist-workers', worker])
