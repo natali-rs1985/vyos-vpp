@@ -28,7 +28,7 @@ __default_resource_map = {
     # Default hugepage size for VPP
     'hugepage_size': '2M',
     # Default amount of memory allocated for VPP exclusive usage
-    'main_heap_size': '4G',
+    'main_heap_size': '3G',
     # Default main heap page size
     'main_heap_page_size': '2M',
     # Default size of buffers transferred via netlink
@@ -39,8 +39,6 @@ __default_resource_map = {
     'min_memory': '8G',
     # Minimal number of physical CPU cores required to start VPP
     'min_cpus': 4,
-    # Reserve at least 2 gigabytes of memory
-    'reserved_memory': '4G',
     # Reserve at least 2 physical cores
     'reserved_cpu_cores': 2,
     # Default heap size for IPv6
@@ -52,7 +50,13 @@ def get_resource_defaults() -> dict:
     resource_map = copy.deepcopy(__default_resource_map)
     # Check if current runtime is smoke tests
     # Since CI/CD runners are limited in resources, reduce the checks for tests
-    if os.path.exists('/tmp/vyos.smoketests.hint'):
+    if is_smoketest():
         resource_map.update(min_memory='6G', min_cpus=2, reserved_cpu_cores=0)
 
     return resource_map
+
+
+def is_smoketest():
+    if os.path.exists('/tmp/vyos.smoketests.hint'):
+        return True
+    return False

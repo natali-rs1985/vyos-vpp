@@ -41,16 +41,14 @@ from vyos.vpp.config_verify import (
     verify_vpp_minimum_memory,
     verify_vpp_settings_cpu_and_corelist_workers,
     verify_vpp_settings_cpu_corelist_workers,
+    verify_vpp_cpu_main_core,
     verify_vpp_settings_cpu_skip_cores,
     verify_vpp_settings_cpu_workers,
     verify_vpp_nat44_workers,
     verify_vpp_memory,
     verify_vpp_statseg_size,
     verify_vpp_interfaces_dpdk_num_queues,
-    verify_vpp_used_cpu_cores,
 )
-from vyos.vpp.config_resource_checks.cpu import available_cores_list
-from vyos.vpp.config_resource_checks.resource_defaults import get_resource_defaults
 from vyos.vpp.config_filter import iface_filter_eth
 from vyos.vpp.utils import EthtoolGDrvinfo
 from vyos.vpp.configdb import JSONStorage
@@ -285,6 +283,15 @@ def get_config(config=None):
             eth_ifaces_persist[iface]['bus_id'] = control_host.get_bus_name(iface)
             eth_ifaces_persist[iface]['dev_id'] = control_host.get_dev_id(iface)
 
+    # Get kernel settings for hugepages
+    kernel_memory_settings = conf.get_config_dict(
+        ['system', 'option', 'kernel', 'memory'],
+        key_mangling=('-', '_'),
+        get_first_key=True,
+        no_tag_node_value_mangle=True,
+    )
+    config['kernel_memory_settings'] = kernel_memory_settings
+
     # Return to config dictionary
     config['persist_config'] = eth_ifaces_persist
 
@@ -302,18 +309,63 @@ def verify(config):
     if 'interface' not in config['settings']:
         raise ConfigError('"settings interface" is required but not set!')
 
-    # Get default values for resource checks
-    resource_defaults = get_resource_defaults()
-
     # check if the system meets minimal requirements
-    verify_vpp_minimum_cpus(resource_defaults.get('min_cpus'))
-    verify_vpp_minimum_memory(resource_defaults.get('min_memory'))
+    verify_vpp_minimum_cpus()
+    verify_vpp_minimum_memory()
 
     # check if Ethernet interfaces exist
     ethernet_ifaces = Section.interfaces('ethernet')
     for iface in config['settings']['interface'].keys():
         if iface not in ethernet_ifaces:
             raise ConfigError(f'Interface {iface} does not exist or is not Ethernet!')
+
+    # Resource usage checks
+    workers = 0
+
+    if 'cpu' in config['settings']:
+        cpu_settings = config['settings']['cpu']
+
+        # Check if there are enough CPU cores to skip according to config
+        if 'skip_cores' in cpu_settings:
+            skip_cores = int(cpu_settings['skip_cores'])
+            verify_vpp_settings_cpu_skip_cores(skip_cores)
+
+        # Check whether the workers and corelist-workers are configured properly
+        verify_vpp_settings_cpu_and_corelist_workers(cpu_settings)
+
+        # Check if there are enough CPU cores to add workers
+        if 'workers' in cpu_settings:
+            workers = verify_vpp_settings_cpu_workers(cpu_settings)
+
+        if 'main_core' in cpu_settings:
+            verify_vpp_cpu_main_core(cpu_settings)
+
+        # Check the CPU main core not falling to the corelist-workers
+        if 'corelist_workers' in cpu_settings:
+            workers = verify_vpp_settings_cpu_corelist_workers(cpu_settings)
+
+    if 'workers' in config['settings']['nat44']:
+        verify_vpp_nat44_workers(
+            workers=workers, nat44_workers=config['settings']['nat44']['workers']
+        )
+
+    # Check if available memory is enough for current VPP config
+    verify_vpp_memory(config)
+
+    if 'host_resources' in config['settings']:
+        if (
+            'nr_hugepages' in config['settings']['host_resources']
+            and 'max_map_count' in config['settings']['host_resources']
+        ):
+            if int(config['settings']['host_resources']['max_map_count']) < 2 * int(
+                config['settings']['host_resources']['nr_hugepages']
+            ):
+                raise ConfigError(
+                    'The max_map_count must be greater than or equal to (2 * nr_hugepages)'
+                )
+
+    if 'statseg' in config['settings']:
+        verify_vpp_statseg_size(config['settings'])
 
     # ensure DPDK/XDP settings are properly configured
     for iface, iface_config in config['settings']['interface'].items():
@@ -329,24 +381,24 @@ def verify(config):
             if iface_config['xdp_options']['num_rx_queues'] != 'all':
                 Warning(f'Not all RX queues will be connected to VPP for {iface}!')
 
-        if iface_config['driver'] == 'dpdk' and 'dpdk_options' in iface_config:
-            if 'num_rx_queues' in iface_config['dpdk_options']:
-                rx_queues = int(iface_config['dpdk_options']['num_rx_queues'])
-                verify_vpp_interfaces_dpdk_num_queues(
-                    qtype='receive', num_queues=rx_queues, settings=config['settings']
-                )
-
-            if 'num_tx_queues' in iface_config['dpdk_options']:
-                tx_queues = int(iface_config['dpdk_options']['num_tx_queues'])
-                verify_vpp_interfaces_dpdk_num_queues(
-                    qtype='transmit', num_queues=tx_queues, settings=config['settings']
-                )
-
         if iface_config['driver'] == 'xdp' and 'dpdk_options' in iface_config:
             raise ConfigError('DPDK options are not applicable for XDP driver!')
 
         if iface_config['driver'] == 'dpdk' and 'xdp_options' in iface_config:
             raise ConfigError('XDP options are not applicable for DPDK driver!')
+
+        if iface_config['driver'] == 'dpdk' and 'dpdk_options' in iface_config:
+            if 'num_rx_queues' in iface_config['dpdk_options']:
+                rx_queues = int(iface_config['dpdk_options']['num_rx_queues'])
+                verify_vpp_interfaces_dpdk_num_queues(
+                    qtype='receive', num_queues=rx_queues, workers=workers
+                )
+
+            if 'num_tx_queues' in iface_config['dpdk_options']:
+                tx_queues = int(iface_config['dpdk_options']['num_tx_queues'])
+                verify_vpp_interfaces_dpdk_num_queues(
+                    qtype='transmit', num_queues=tx_queues, workers=workers
+                )
 
         # RX-mode verification
         rx_mode = iface_config.get('rx_mode')
@@ -404,84 +456,6 @@ def verify(config):
                             raise ConfigError(
                                 'Only one multipoint GRE tunnel is allowed from the same source address'
                             )
-    # Resource usage checks
-    workers = 0
-    skip_cores = 0
-    cpu_reserve = resource_defaults.get('reserved_cpu_cores')
-
-    if 'cpu' in config['settings']:
-        cpu_settings = config['settings']['cpu']
-
-        # Check if there are enough CPU cores to skip according to config
-        if 'skip_cores' in cpu_settings:
-            skip_cores = int(cpu_settings['skip_cores'])
-            verify_vpp_settings_cpu_skip_cores(skip_cores)
-
-            # Ensure at least 2 CPU cores are reserved by skip-cores
-            if skip_cores == 0:
-                cpu_reserve = resource_defaults.get('reserved_cpu_cores')
-            elif skip_cores == 1:
-                cpu_reserve = skip_cores + 1
-            else:
-                cpu_reserve = skip_cores
-
-        # Check whether the workers and corelist_workers are configured properly
-        verify_vpp_settings_cpu_and_corelist_workers(cpu_settings)
-
-        # Check if there are enough CPU cores and memory to add workers
-        if 'workers' in cpu_settings:
-            workers = verify_vpp_settings_cpu_workers(
-                skip_cores=cpu_reserve, config=config, defaults=resource_defaults
-            )
-
-        if 'main_core' in cpu_settings:
-            available_cores = available_cores_list(cpu_reserve)
-
-            # Check that the main core is available
-            main_core = int(cpu_settings['main_core'])
-            if main_core not in available_cores:
-                raise ConfigError(
-                    'Cannot set main core for VPP process:\n'
-                    f'CPU#{main_core} is not available.\n'
-                )
-
-            # Check the CPU main core not falling to the corelist-workers
-            if 'corelist_workers' in cpu_settings:
-                workers = verify_vpp_settings_cpu_corelist_workers(
-                    cpus=available_cores,
-                    main_core=main_core,
-                    workers=cpu_settings['corelist_workers'],
-                    reserved_cores=cpu_reserve,
-                )
-        # Check overall CPU settings and ensure there are enough cores in system
-        # The check assumes that at least 2 cores are reserved for system use
-        verify_vpp_used_cpu_cores(cpu_settings, cpu_reserve)
-
-    if 'workers' in config['settings']['nat44']:
-        verify_vpp_nat44_workers(
-            workers=workers, nat44_workers=config['settings']['nat44']
-        )
-
-    # Check if available memory is enough for current VPP config
-    verify_vpp_memory(config, resource_defaults, cpu_reserve)
-
-    if 'host_resources' in config['settings']:
-        if (
-            'nr_hugepages' in config['settings']['host_resources']
-            and 'max_map_count' in config['settings']['host_resources']
-        ):
-            if int(config['settings']['host_resources']['max_map_count']) < 2 * int(
-                config['settings']['host_resources']['nr_hugepages']
-            ):
-                raise ConfigError(
-                    'The max_map_count must be greater than or equal to (2 * nr_hugepages)'
-                )
-
-    if 'statseg' in config['settings']:
-        verify_vpp_statseg_size(
-            settings=config['settings'],
-            statseg_heap_size=resource_defaults.get('statseg_heap_size'),
-        )
 
     # Check if deleted interfaces are not xconnect memebrs
     for iface_config in config.get('removed_ifaces', []):
