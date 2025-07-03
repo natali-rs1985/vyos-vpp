@@ -50,13 +50,7 @@ def get_resource_defaults() -> dict:
     resource_map = copy.deepcopy(__default_resource_map)
     # Check if current runtime is smoke tests
     # Since CI/CD runners are limited in resources, reduce the checks for tests
-    if is_smoketest():
+    if os.path.exists('/tmp/vyos.smoketests.hint'):
         resource_map.update(min_memory='6G', min_cpus=2, reserved_cpu_cores=0)
 
     return resource_map
-
-
-def is_smoketest():
-    if os.path.exists('/tmp/vyos.smoketests.hint'):
-        return True
-    return False

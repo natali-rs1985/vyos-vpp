@@ -30,10 +30,10 @@ from vyos.vpp.config_resource_checks.resource_defaults import get_resource_defau
 defaults = get_resource_defaults()
 
 
-def get_total_hugepages_free_memory() -> int:
+def get_hugepages_info() -> dict:
     """
-    Returns the total amount of hugepage-backed free memory (in bytes)
-    as reported by /proc/meminfo
+    Returns the information about HugePages
+    retrieved from /proc/meminfo
     """
     info = {}
     with open('/proc/meminfo', 'r') as meminfo:
@@ -41,11 +41,26 @@ def get_total_hugepages_free_memory() -> int:
             if line.startswith('Huge'):
                 key, value, *_ = line.strip().split()
                 info[key.rstrip(':')] = int(value)
+    return info
 
+
+def get_total_hugepages_free_memory() -> int:
+    """
+    Returns the total amount of hugepage-backed free memory (in bytes)
+    """
+    info = get_hugepages_info()
     hugepages_free = info.get('HugePages_Free')
     hugepage_size = info.get('Hugepagesize') * 1024
 
     return hugepage_size * hugepages_free
+
+
+def get_hugepages_total() -> int:
+    """
+    Returns the total count of hugepages
+    """
+    info = get_hugepages_info()
+    return info.get('HugePages_Total')
 
 
 def get_numa_count():
@@ -56,18 +71,6 @@ def get_numa_count():
     # e.g. "available: 2 nodes (0-1)"
     m = re.search(r'available:\s*(\d+)\s+nodes', out)
     return int(m.group(1)) if m else 0
-
-
-def get_memory_from_kernel_settings(settings: dict) -> int:
-    hugepage_settings = settings.get('hugepage_size', {})
-
-    total_bytes = 0
-    for size_str, info in hugepage_settings.items():
-        count = int(info.get('hugepage_count', 0))
-        page_bytes = human_memory_to_bytes(size_str)
-        total_bytes += count * page_bytes
-
-    return total_bytes
 
 
 def buffer_size(settings: dict) -> int:

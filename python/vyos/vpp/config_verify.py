@@ -229,14 +229,8 @@ def verify_vpp_memory(config: dict):
             f'The main heap size must be greater than or equal to page-size ({readable_heap_page})'
         )
 
-    # Get available HupePage memory to compare with required memory for VPP
-    # (if it's smketests environment get system kernel settings for HugePages)
-    if not resource_defaults.is_smoketest():
-        available_memory = mem_checks.get_total_hugepages_free_memory()
-    else:
-        available_memory = mem_checks.get_memory_from_kernel_settings(
-            config['kernel_memory_settings']
-        )
+    # Get available HugePage memory to compare with required memory for VPP
+    available_memory = mem_checks.get_total_hugepages_free_memory()
 
     memory_required = mem_checks.total_memory_required(config['settings'])
 
@@ -398,4 +392,16 @@ def verify_vpp_interfaces_dpdk_num_queues(qtype: str, num_queues: int, workers: 
         raise ConfigError(
             f'The number of {qtype} queues cannot be greater than the number of configured VPP workers: '
             f'workers: {workers}, queues: {num_queues}'
+        )
+
+
+def verify_vpp_host_resources(config: dict):
+    max_map_count = int(config['settings']['host_resources']['max_map_count'])
+
+    # Get HugePages total count
+    hugepages = mem_checks.get_hugepages_total()
+
+    if max_map_count < 2 * hugepages:
+        raise ConfigError(
+            'The max_map_count must be greater than or equal to (2 * HugePages_Total)'
         )
