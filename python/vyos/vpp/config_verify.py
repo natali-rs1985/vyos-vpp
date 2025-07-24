@@ -19,6 +19,7 @@
 import psutil
 
 from vyos import ConfigError
+from vyos.base import Warning
 from vyos.utils.cpu import get_core_count as total_core_count
 
 from vyos.vpp.control_host import get_eth_driver
@@ -398,6 +399,6 @@ def verify_vpp_host_resources(config: dict):
     hugepages = mem_checks.get_hugepages_total()
 
     if max_map_count < 2 * hugepages:
-        raise ConfigError(
+        Warning(
             'The max_map_count must be greater than or equal to (2 * HugePages_Total)'
         )
