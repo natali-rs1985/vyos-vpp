@@ -31,6 +31,7 @@ from vyos.configsession import ConfigSessionError
 from vyos.utils.process import process_named_running
 from vyos.utils.file import read_file
 from vyos.utils.process import rc_cmd
+from vyos.utils.system import sysctl_read
 from vyos.vpp.utils import human_page_memory_to_bytes
 
 sys.path.append(os.getenv('vyos_completion_dir'))
@@ -1392,6 +1393,28 @@ class TestVPP(VyOSUnitTestSHIM.TestCase):
         # Summary
         _, out = rc_cmd('sudo vppctl show nat44 summary')
         self.assertIn(f'max translations per thread: {sess_limit} fib 0', out)
+
+    @unittest.skip(
+        'Skipping... it will always fail due to the restriction of not to decrease values in host-resources section'
+    )
+    def test_18_vpp_host_resources(self):
+        max_map_count = '100000'
+        hr_path = base_path + ['settings', 'host-resources']
+
+        # Check if max-map-count has default value
+        self.assertEqual(sysctl_read('vm.max_map_count'), '65530')
+
+        # Change max-map-count and check
+        self.cli_set(hr_path + ['max-map-count', max_map_count])
+        self.cli_commit()
+
+        self.assertEqual(sysctl_read('vm.max_map_count'), max_map_count)
+
+        # We expect max-map-count will return to default '65530'
+        self.cli_delete(hr_path + ['max-map-count'])
+        self.cli_commit()
+
+        self.assertEqual(sysctl_read('vm.max_map_count'), '65530')
 
 
 if __name__ == '__main__':
