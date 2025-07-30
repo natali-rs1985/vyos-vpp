@@ -1393,6 +1393,93 @@ class TestVPP(VyOSUnitTestSHIM.TestCase):
         _, out = rc_cmd('sudo vppctl show nat44 summary')
         self.assertIn(f'max translations per thread: {sess_limit} fib 0', out)
 
+    def test_18_vpp_vrrp(self):
+        base_vrrp = base_path + ['vrrp', 'group']
+        addresses_first = ['192.0.10.1']
+        vrid_first = '10'
+        advertise_interval = '5'
+        priority = '150'
+        peer_addresses = ['192.0.2.11', '192.0.2.12']
+        addresses_second = ['2001:db8:1111::1', '2001:db8:1112::1']
+        vrid_second = '20'
+        addresses_third = ['192.0.20.1']
+        vrid_third = '30'
+
+        # Set VRRP group FIRST (ipv4)
+        self.cli_set(base_vrrp + ['FIRST', 'interface', interface])
+        self.cli_set(base_vrrp + ['FIRST', 'vrid', vrid_first])
+        self.cli_set(base_vrrp + ['FIRST', 'advertise-interval', advertise_interval])
+        self.cli_set(base_vrrp + ['FIRST', 'priority', priority])
+        for address in addresses_first:
+            self.cli_set(base_vrrp + ['FIRST', 'address', address])
+        for address in peer_addresses:
+            self.cli_set(base_vrrp + ['FIRST', 'peer-address', address])
+
+        # Interface should have IP address
+        # expect raise ConfigError
+        with self.assertRaises(ConfigSessionError):
+            self.cli_commit()
+
+        self.cli_set(['interfaces', 'ethernet', interface, 'address', '192.0.2.11/24'])
+
+        self.cli_commit()
+
+        # Check information for group FIRST
+        _, out = rc_cmd('sudo vppctl show vrrp vr')
+        self.assertIn(f'[0] sw_if_index 1 VR ID {vrid_first} IPv4', out)
+        self.assertIn('flags: preempt yes accept no unicast yes', out)
+        self.assertIn(f'priority: configured {priority}', out)
+        self.assertIn(f'timers: adv interval {advertise_interval}00', out)
+        self.assertIn(f'addresses {" ".join(addresses_first)}', out)
+        self.assertIn(f'peer addresses {" ".join(peer_addresses)}', out)
+
+        # Set VRRP group SECOND (ipv6)
+        self.cli_set(base_vrrp + ['SECOND', 'interface', interface])
+        self.cli_set(base_vrrp + ['SECOND', 'vrid', vrid_second])
+        for address in addresses_second:
+            self.cli_set(base_vrrp + ['SECOND', 'address', address])
+
+        self.cli_commit()
+
+        # Check information for group SECOND
+        _, out = rc_cmd('sudo vppctl show vrrp vr')
+        self.assertIn(f'[1] sw_if_index 1 VR ID {vrid_second} IPv6', out)
+        self.assertIn('flags: preempt yes accept no unicast no', out)
+        self.assertIn('priority: configured 100', out)  # default priority
+        self.assertIn('timers: adv interval 100', out)  # default advertise-interval
+        self.assertIn(f'addresses {" ".join(addresses_second)}', out)
+
+        # VRID can only be used once on interface with the same address family
+        self.cli_set(base_vrrp + ['THIRD', 'interface', interface])
+        self.cli_set(base_vrrp + ['THIRD', 'vrid', vrid_first])
+        self.cli_set(base_vrrp + ['THIRD', 'no-preempt'])
+        for address in addresses_third:
+            self.cli_set(base_vrrp + ['THIRD', 'address', address])
+
+        # expect raise ConfigError
+        with self.assertRaises(ConfigSessionError):
+            self.cli_commit()
+
+        self.cli_set(base_vrrp + ['THIRD', 'vrid', vrid_third])
+
+        # Virtual address should not be used in another group
+        self.cli_set(base_vrrp + ['THIRD', 'address', addresses_first[0]])
+        # expect raise ConfigError
+        with self.assertRaises(ConfigSessionError):
+            self.cli_commit()
+
+        self.cli_delete(base_vrrp + ['THIRD', 'address', addresses_first[0]])
+
+        self.cli_commit()
+
+        # Check information for group THIRD
+        _, out = rc_cmd('sudo vppctl show vrrp vr')
+        self.assertIn(f'[2] sw_if_index 1 VR ID {vrid_third} IPv4', out)
+        self.assertIn('flags: preempt no accept no unicast no', out)
+        self.assertIn('priority: configured 100', out)  # default priority
+        self.assertIn('timers: adv interval 100', out)  # default advertise-interval
+        self.assertIn(f'addresses {" ".join(addresses_third)}', out)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

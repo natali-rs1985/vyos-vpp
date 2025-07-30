@@ -1517,6 +1517,115 @@
         </node>
       </children>
     </node>
+    <node name="vrrp"  owner="${vyos_conf_scripts_dir}/vpp_vrrp.py">
+      <properties>
+        <help>VPP Virtual Router Redundancy Protocol (VRRP) settings</help>
+        <priority>333</priority>
+      </properties>
+      <children>
+        <tagNode name="group">
+          <properties>
+            <help>VPP VRRP group</help>
+          </properties>
+          <children>
+            <leafNode name="interface">
+              <properties>
+                <help>Interface</help>
+                <completionHelp>
+                  <script>${vyos_completion_dir}/list_interfaces</script>
+                </completionHelp>
+              </properties>
+            </leafNode>
+            <leafNode name="advertise-interval">
+              <properties>
+                <help>Advertise interval</help>
+                <valueHelp>
+                  <format>u32:1-255</format>
+                  <description>Advertise interval in seconds</description>
+                </valueHelp>
+                <constraint>
+                  <validator name="numeric" argument="--range 1-255"/>
+                </constraint>
+              </properties>
+              <defaultValue>1</defaultValue>
+            </leafNode>
+            #include <include/generic-description.xml.i>
+            #include <include/generic-disable-node.xml.i>
+            <leafNode name="peer-address">
+              <properties>
+                <help>Unicast VRRP peer address</help>
+                <valueHelp>
+                  <format>ipv4</format>
+                  <description>IPv4 unicast peer address</description>
+                </valueHelp>
+                <valueHelp>
+                  <format>ipv6</format>
+                  <description>IPv6 unicast peer address</description>
+                </valueHelp>
+                <constraint>
+                  <validator name="ip-address"/>
+                </constraint>
+                <multi/>
+              </properties>
+            </leafNode>
+            <leafNode name="no-preempt">
+              <properties>
+                <valueless/>
+                <help>Disable master preemption</help>
+              </properties>
+            </leafNode>
+            <leafNode name="accept-mode">
+              <properties>
+                <valueless/>
+                <help>Allow backup VRRP router to accept and process packets</help>
+              </properties>
+            </leafNode>
+            <leafNode name="priority">
+              <properties>
+                <help>Router priority</help>
+                <valueHelp>
+                  <format>u32:1-255</format>
+                  <description>Router priority</description>
+                </valueHelp>
+                <constraint>
+                  <validator name="numeric" argument="--range 1-255"/>
+                </constraint>
+              </properties>
+              <defaultValue>100</defaultValue>
+            </leafNode>
+            <leafNode name="address">
+              <properties>
+                <help>Virtual IP address</help>
+                <valueHelp>
+                  <format>ipv4</format>
+                  <description>IPv4 address</description>
+                </valueHelp>
+                <valueHelp>
+                  <format>ipv6</format>
+                  <description>IPv6 address</description>
+                </valueHelp>
+                <constraint>
+                  <validator name="ip-address"/>
+                </constraint>
+                <multi/>
+              </properties>
+            </leafNode>
+            <leafNode name="vrid">
+              <properties>
+                <help>Virtual router identifier</help>
+                <valueHelp>
+                  <format>u32:1-255</format>
+                  <description>Virtual router identifier</description>
+                </valueHelp>
+                <constraint>
+                  <validator name="numeric" argument="--range 1-255"/>
+                </constraint>
+              </properties>
+            </leafNode>
+          </children>
+        </tagNode>
+      </children>
+    </node>
     <tagNode name="kernel-interfaces" owner="${vyos_conf_scripts_dir}/vpp_kernel-interfaces.py">
       <properties>
         <help>VPP kernel interface settings</help>

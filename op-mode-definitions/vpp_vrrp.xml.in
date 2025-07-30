@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<interfaceDefinition>
+  <node name="show">
+    <children>
+      <node name="vpp">
+        <children>
+          <tagNode name="vrrp">
+            <properties>
+              <help>Show specified VPP VRRP group</help>
+              <completionHelp>
+                <path>vpp vrrp group</path>
+              </completionHelp>
+            </properties>
+            <standalone>
+              <help>Show VPP VRRP information</help>
+              <command>sudo ${vyos_op_scripts_dir}/vpp_vrrp.py show_vrrp</command>
+            </standalone>
+            <command>sudo ${vyos_op_scripts_dir}/vpp_vrrp.py show_vrrp --group="$5"</command>
+          </tagNode>
+        </children>
+      </node>
+    </children>
+  </node>
+</interfaceDefinition>

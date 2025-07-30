@@ -297,6 +297,10 @@ def get_config(config=None):
     # Return to config dictionary
     config['persist_config'] = eth_ifaces_persist
 
+    # VRRP dependency
+    if conf.exists(['vpp', 'vrrp', 'group']):
+        set_dependents('vpp_vrrp', conf)
+
     return config
 
 
