@@ -51,14 +51,6 @@ def get_total_hugepages_free_memory() -> int:
     return hugepage_size * hugepages_free
 
 
-def get_hugepages_total() -> int:
-    """
-    Returns the total count of hugepages
-    """
-    info = get_hugepages_info()
-    return info.get('HugePages_Total')
-
-
 def get_numa_count():
     """
     Run `numactl --hardware` and parse the 'available:' line.
